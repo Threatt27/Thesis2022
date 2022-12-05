@@ -1,0 +1,106 @@
+---
+title: "Untitled"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library("flexdashboard")
+library("data.table")
+library("plotly")
+library("ggplot2")
+library("leaflet")
+library("reactable")
+library("forecast")
+library("purrr")
+library("openxlsx")
+library("fs")
+library("here")
+
+niassan <- fread("data/2020_Niassan.csv")
+setnames(niassan, "Month", "canonical_month")
+
+# read in all the xlsx and stack
+angola <- dir_ls(here("data"), glob = "*.xlsx") %>%
+  purrr::map(function(fl) {
+    openxlsx::readWorkbook(fl) %>% as.data.table()
+  }) %>% rbindlist()
+
+# map the abbreviated month to a full month name
+pluck(angola, "Month") %>% 
+  map_chr(~month.name[which(month.abb == .)]) %>% 
+  set(angola, i = NULL, j = "canonical_month", value = .)
+
+angola[, newest_detection := as.POSIXct(newest_detection * 24 * 60 * 60, origin = "1899-12-30")]
+
+cc <- c("newest_detection", "canonical_month", "Quarter", "DOY", "confidence", "num_fires", "preserve")
+merge_cols <- c("canonical_month", "Quarter", "DOY")
+
+angola[, preserve := "mavinga"]
+niassan[, preserve := "niassan"]
+
+stack_dt <- rbind(angola[, ..cc], niassan[, ..cc], use.names = TRUE)
+stack_dt[, year := year(newest_detection)]
+```
+
+Summary
+=======================================================================
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Chart A
+
+```{r}
+leaflet() %>% 
+  addTiles() %>% 
+  addCircleMarkers(niassan$centroid.longitude, 
+                   niassan$centroid.latitude, 
+                   color = niassan$confidence , 
+                   radius = 6, 
+                   fill = TRUE,
+                   fillOpacity = 0.2,
+                   opacity = 0.6, clusterOptions = markerClusterOptions())
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Chart B
+
+```{r}
+dcast.data.table(stack_dt, year + Quarter + DOY ~ preserve, value.var = "num_fires", fun.aggregate = sum)
+```
+
+### Chart C
+
+```{r}
+ggplot(stack_dt, aes(newest_detection, num_fires, colour = preserve)) +
+  geom_point()
+```
+
+Time Series Analysis
+=======================================================================
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Chart A
+
+```{r}
+
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Chart B
+
+```{r}
+```
+
+### Chart C
